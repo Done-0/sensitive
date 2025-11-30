@@ -1,0 +1,38 @@
+# Claude
+.claude/
+.history
+
+# Env
+.env
+
+# Project
+.logs/
+tmp/
+/database/
+configs/config.local.yml
+configs/config.prod.yml
+
+# User custom dictionary files
+configs/dict/custom_*.txt
+configs/dict/local_*.txt
+configs/dict/user_*.txt
+
+# IDE
+.vscode/
+.idea/
+
+# Go
+*.exe
+*.test
+*.out
+*.so
+*.dylib
+*.a
+vendor/
+go.work
+go.work.sum
+__debug_bin
+
+# OS
+.DS_Store
+Thumbs.db
