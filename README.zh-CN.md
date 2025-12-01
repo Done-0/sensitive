@@ -6,13 +6,13 @@
 
 ## 特性
 
-- **高性能** - AC 自动机算法，O(n) 时间复杂度
-- **零依赖** - 纯 Go 标准库实现
-- **线程安全** - Build() 后并发安全
-- **流式 API** - 简洁的 Builder 模式配置
-- **内置词典** - 64K+ 词汇（中文）
-- **远程词典** - 支持从 HTTP/HTTPS URL 加载
-- **灵活过滤** - 掩码、替换或删除敏感词
+- **高性能** - Double Array Trie + AC 自动机，O(n) 复杂度
+- **超快构建** - 64K 词典 50ms 完成
+- **零依赖** - 纯 Go 实现
+- **线程安全** - Build() 后支持并发读
+- **流式 API** - 简洁的构建模式
+- **内置词典** - 64K+ 中文词汇
+- **灵活过滤** - 掩码、替换或删除匹配
 - **中文支持** - 繁简体转换
 
 ## 安装
@@ -208,12 +208,16 @@ func handler(text string) error {
 ### 8. 性能
 
 ```
-BenchmarkDetector_Detect_SmallDict-12     85511 ns/op    5 allocs/op
-BenchmarkDetector_Detect_ShortText-12      8873 ns/op    5 allocs/op
-BenchmarkDetector_AddWord-12                115 ns/op    1 allocs/op
-BenchmarkDetector_Parallel-12             17512 ns/op    5 allocs/op
+BenchmarkDAT_Build_1KWords-12              886 μs/op   29.9 MB/op    2753 allocs/op
+BenchmarkDAT_Build_10KWords-12            3.60 ms/op   30.1 MB/op   20753 allocs/op
+BenchmarkDetector_Detect_SmallDict-12     79.0 μs/op   34.0 KB/op       5 allocs/op
+BenchmarkDetector_Detect_ShortText-12     8.17 μs/op    3.9 KB/op       5 allocs/op
+BenchmarkDetector_Detect_LongText-12       778 μs/op    328 KB/op       5 allocs/op
+BenchmarkDetector_AddWord-12               126 ns/op     32 B/op        2 allocs/op
+BenchmarkDetector_Parallel-12             10.7 μs/op   34.1 KB/op       5 allocs/op
 ```
 
+- Double Array Trie 实现，搜索复杂度 O(n)
 - 在 `init()` 中加载词典一次
 - 跨 goroutine 复用检测器（Build() 后线程安全）
 - 内部使用内存池优化性能

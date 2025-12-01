@@ -80,7 +80,7 @@ func (d *Detector) Build() error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	trie.BuildFailureLinks(d.tree.Root())
+	d.tree.Build()
 	d.isBuilt = true
 	return nil
 }
@@ -99,7 +99,7 @@ func (d *Detector) Detect(text string) *Result {
 
 	normalized := d.normalizer.Normalize(text)
 	runes := []rune(normalized)
-	matches := trie.Search(d.tree.Root(), runes)
+	matches := d.tree.SearchDAT(runes)
 	d.mu.RUnlock()
 
 	if len(matches) > 0 {
@@ -217,24 +217,10 @@ func (d *Detector) Stats() *Stats {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
 
-	var depth func(*trie.Node, int) int
-	depth = func(node *trie.Node, current int) int {
-		if node == nil {
-			return current
-		}
-		max := current
-		for _, child := range node.Children() {
-			if d := depth(child, current+1); d > max {
-				max = d
-			}
-		}
-		return max
-	}
-
 	return &Stats{
 		TotalWords: d.count,
-		TreeDepth:  depth(d.tree.Root(), 0),
-		MemorySize: int64(d.count) * 400,
+		TreeDepth:  d.tree.Size(),
+		MemorySize: d.tree.MemoryUsage(),
 	}
 }
 

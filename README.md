@@ -6,13 +6,13 @@ High-performance sensitive word detection library for Go using Aho-Corasick auto
 
 ## Features
 
-- **High Performance** - AC automaton algorithm with O(n) time complexity
-- **Zero Dependencies** - Pure Go standard library
-- **Thread-Safe** - Concurrent-safe after Build()
-- **Fluent API** - Clean builder pattern for configuration
-- **Built-in Dictionaries** - 64K+ words (Chinese)
-- **Remote Dictionaries** - Load from HTTP/HTTPS URLs
-- **Flexible Filtering** - Mask, replace, or remove sensitive words
+- **High Performance** - Double Array Trie with AC automaton, O(n) complexity
+- **Ultra-Fast Build** - 64K dictionary in 50ms
+- **Zero Dependencies** - Pure Go implementation
+- **Thread-Safe** - Concurrent reads after Build()
+- **Fluent API** - Clean builder pattern
+- **Built-in Dictionaries** - 64K+ Chinese words
+- **Flexible Filtering** - Mask, replace, or remove matches
 - **Chinese Support** - Traditional/Simplified conversion
 
 ## Installation
@@ -208,12 +208,16 @@ func handler(text string) error {
 ### 8. Performance
 
 ```
-BenchmarkDetector_Detect_SmallDict-12     85511 ns/op    5 allocs/op
-BenchmarkDetector_Detect_ShortText-12      8873 ns/op    5 allocs/op
-BenchmarkDetector_AddWord-12                115 ns/op    1 allocs/op
-BenchmarkDetector_Parallel-12             17512 ns/op    5 allocs/op
+BenchmarkDAT_Build_1KWords-12              886 μs/op   29.9 MB/op    2753 allocs/op
+BenchmarkDAT_Build_10KWords-12            3.60 ms/op   30.1 MB/op   20753 allocs/op
+BenchmarkDetector_Detect_SmallDict-12     79.0 μs/op   34.0 KB/op       5 allocs/op
+BenchmarkDetector_Detect_ShortText-12     8.17 μs/op    3.9 KB/op       5 allocs/op
+BenchmarkDetector_Detect_LongText-12       778 μs/op    328 KB/op       5 allocs/op
+BenchmarkDetector_AddWord-12               126 ns/op     32 B/op        2 allocs/op
+BenchmarkDetector_Parallel-12             10.7 μs/op   34.1 KB/op       5 allocs/op
 ```
 
+- Double Array Trie implementation for O(n) search complexity
 - Load dictionaries once in `init()`
 - Reuse detector across goroutines (thread-safe after Build())
 - Memory pool used internally
