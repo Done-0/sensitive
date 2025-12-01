@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/Done-0/sensitive/internal/normalizer"
 	"github.com/Done-0/sensitive/internal/pool"
@@ -22,8 +23,9 @@ type Detector struct {
 	mu         sync.RWMutex
 	normalizer *normalizer.Normalizer
 	opts       *Options
-	isBuilt    bool
+	built      atomic.Bool
 	count      int
+	runePool   sync.Pool
 }
 
 func New(opts ...Option) *Detector {
@@ -42,6 +44,12 @@ func New(opts ...Option) *Detector {
 		tree:       trie.New(),
 		normalizer: normalizer.New(o.EnableVariant, o.CaseSensitive),
 		opts:       o,
+		runePool: sync.Pool{
+			New: func() any {
+				buf := make([]rune, 0, 1024)
+				return &buf
+			},
+		},
 	}
 }
 
@@ -62,7 +70,7 @@ func (d *Detector) AddWord(word string, level Level) error {
 
 	d.tree.Insert(normalized, int(level))
 	d.count++
-	d.isBuilt = false
+	d.built.Store(false)
 	d.mu.Unlock()
 	return nil
 }
@@ -81,7 +89,7 @@ func (d *Detector) Build() error {
 	defer d.mu.Unlock()
 
 	d.tree.Build()
-	d.isBuilt = true
+	d.built.Store(true)
 	return nil
 }
 
@@ -91,14 +99,18 @@ func (d *Detector) Detect(text string) *Result {
 		return result
 	}
 
+	bufPtr := d.runePool.Get().(*[]rune)
+	if cap(*bufPtr) < len(text) {
+		*bufPtr = make([]rune, 0, len(text))
+	}
+	runes := d.normalizer.ToRunes(text, *bufPtr)
+
 	d.mu.RLock()
-	if !d.isBuilt {
+	if !d.built.Load() {
 		d.mu.RUnlock()
+		d.runePool.Put(bufPtr)
 		return result
 	}
-
-	normalized := d.normalizer.Normalize(text)
-	runes := []rune(normalized)
 	matches := d.tree.SearchDAT(runes)
 	d.mu.RUnlock()
 
@@ -114,24 +126,30 @@ func (d *Detector) Detect(text string) *Result {
 			}
 		}
 
-		textRunes := []rune(text)
-		filtered := pool.Get(len(textRunes))
-		defer pool.Put(filtered)
+		textRunes := runes
+		n := len(textRunes)
 
-		mask := make([]bool, len(textRunes))
+		mask := pool.GetBools(n)
+		defer pool.PutBools(mask)
+
 		for _, m := range result.Matches {
-			for i := m.Start; i < m.End && i < len(mask); i++ {
-				mask[i] = true
+			for i := m.Start; i < m.End && i < n; i++ {
+				(*mask)[i] = true
 			}
 		}
 
+		filtered := pool.GetRunes(n)
+		defer pool.PutRunes(filtered)
+
+		replaceChar := d.opts.ReplaceChar
+		if d.opts.FilterStrategy == StrategyMask {
+			replaceChar = '*'
+		}
+
 		for i, r := range textRunes {
-			if mask[i] {
-				switch d.opts.FilterStrategy {
-				case StrategyReplace:
-					*filtered = append(*filtered, d.opts.ReplaceChar)
-				case StrategyMask:
-					*filtered = append(*filtered, '*')
+			if (*mask)[i] {
+				if d.opts.FilterStrategy != StrategyRemove {
+					*filtered = append(*filtered, replaceChar)
 				}
 			} else {
 				*filtered = append(*filtered, r)
@@ -141,11 +159,81 @@ func (d *Detector) Detect(text string) *Result {
 		result.FilteredText = string(*filtered)
 	}
 
+	*bufPtr = (*bufPtr)[:0]
+	d.runePool.Put(bufPtr)
 	return result
 }
 
 func (d *Detector) Filter(text string) string {
 	return d.Detect(text).FilteredText
+}
+
+func (d *Detector) Contains(text string) bool {
+	if text == "" {
+		return false
+	}
+
+	bufPtr := d.runePool.Get().(*[]rune)
+	if cap(*bufPtr) < len(text) {
+		*bufPtr = make([]rune, 0, len(text))
+	}
+	runes := d.normalizer.ToRunes(text, *bufPtr)
+
+	d.mu.RLock()
+	if !d.built.Load() {
+		d.mu.RUnlock()
+		d.runePool.Put(bufPtr)
+		return false
+	}
+	has := d.tree.Contains(runes)
+	d.mu.RUnlock()
+
+	d.runePool.Put(bufPtr)
+	return has
+}
+
+func (d *Detector) FindFirst(text string) *Match {
+	if text == "" {
+		return nil
+	}
+
+	bufPtr := d.runePool.Get().(*[]rune)
+	if cap(*bufPtr) < len(text) {
+		*bufPtr = make([]rune, 0, len(text))
+	}
+	runes := d.normalizer.ToRunes(text, *bufPtr)
+
+	d.mu.RLock()
+	if !d.built.Load() {
+		d.mu.RUnlock()
+		d.runePool.Put(bufPtr)
+		return nil
+	}
+	m := d.tree.FindFirst(runes)
+	d.mu.RUnlock()
+
+	d.runePool.Put(bufPtr)
+	if m == nil {
+		return nil
+	}
+	return &Match{Word: m.Word, Start: m.Start, End: m.End, Level: Level(m.Level)}
+}
+
+func (d *Detector) FindAll(text string) []string {
+	result := d.Detect(text)
+	if !result.HasSensitive {
+		return nil
+	}
+
+	seen := make(map[string]struct{}, len(result.Matches))
+	words := make([]string, 0, len(result.Matches))
+	for _, m := range result.Matches {
+		if _, ok := seen[m.Word]; !ok {
+			seen[m.Word] = struct{}{}
+			words = append(words, m.Word)
+		}
+	}
+	return words
 }
 
 func (d *Detector) IsVariantEnabled() bool {

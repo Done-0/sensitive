@@ -269,31 +269,35 @@ func (t *Tree) buildDATRecursive(node *trieNode, state int) {
 func (t *Tree) SearchDAT(text []rune) []Match {
 	matches := make([]Match, 0, 16)
 	state := 0
+	base := t.base
+	check := t.check
+	fail := t.fail
+	output := t.output
+	baseLen := len(base)
+	checkLen := len(check)
+	outputLen := len(output)
 
 	for i, r := range text {
 		c := int(r)
 		for {
-			if state >= len(t.base) {
+			if state >= baseLen {
 				state = 0
 				break
 			}
-
-			next := t.base[state] + c
-			if next < len(t.check) && t.check[next] == state && t.used[next] {
+			next := base[state] + c
+			if next < checkLen && check[next] == state {
 				state = next
 				break
 			}
-
 			if state == 0 {
 				break
 			}
-			state = t.fail[state]
+			state = fail[state]
 		}
 
-		temp := state
-		for temp > 0 {
-			if temp < len(t.output) && t.output[temp] != nil {
-				for _, out := range *t.output[temp] {
+		for temp := state; temp > 0; temp = fail[temp] {
+			if temp < outputLen && output[temp] != nil {
+				for _, out := range *output[temp] {
 					matches = append(matches, Match{
 						Word:  *out.word,
 						Start: i - out.len + 1,
@@ -302,11 +306,89 @@ func (t *Tree) SearchDAT(text []rune) []Match {
 					})
 				}
 			}
-			temp = t.fail[temp]
 		}
 	}
-
 	return matches
+}
+
+func (t *Tree) Contains(text []rune) bool {
+	state := 0
+	base := t.base
+	check := t.check
+	fail := t.fail
+	output := t.output
+	baseLen := len(base)
+	checkLen := len(check)
+	outputLen := len(output)
+
+	for _, r := range text {
+		c := int(r)
+		for {
+			if state >= baseLen {
+				state = 0
+				break
+			}
+			next := base[state] + c
+			if next < checkLen && check[next] == state {
+				state = next
+				break
+			}
+			if state == 0 {
+				break
+			}
+			state = fail[state]
+		}
+
+		for temp := state; temp > 0; temp = fail[temp] {
+			if temp < outputLen && output[temp] != nil {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (t *Tree) FindFirst(text []rune) *Match {
+	state := 0
+	base := t.base
+	check := t.check
+	fail := t.fail
+	output := t.output
+	baseLen := len(base)
+	checkLen := len(check)
+	outputLen := len(output)
+
+	for i, r := range text {
+		c := int(r)
+		for {
+			if state >= baseLen {
+				state = 0
+				break
+			}
+			next := base[state] + c
+			if next < checkLen && check[next] == state {
+				state = next
+				break
+			}
+			if state == 0 {
+				break
+			}
+			state = fail[state]
+		}
+
+		for temp := state; temp > 0; temp = fail[temp] {
+			if temp < outputLen && output[temp] != nil {
+				out := (*output[temp])[0]
+				return &Match{
+					Word:  *out.word,
+					Start: i - out.len + 1,
+					End:   i + 1,
+					Level: out.level,
+				}
+			}
+		}
+	}
+	return nil
 }
 
 func (t *Tree) Size() int {
